@@ -40,13 +40,10 @@ map_symbol_id = readr::read_delim(paste0(data_folder, '/10x_multiome/filtered_fe
                                   col_names = c('gene_id', 'symbol', 'modality', 'chr', 'from', 'to'))  %>% dplyr::filter(modality == 'Gene Expression')
 
 
-# prefix = prefixes[4]
 for (prefix in prefixes){ 
   features_df = read.table(paste0(data_dir, '/rna/', prefix, "_features.tsv.gz"))  
   colnames(features_df) = c('gene_id', 'gene_name', 'assay')
   features_df = features_df %>% dplyr::select(gene_id, gene_name) %>% left_join(map_symbol_id, by = 'gene_id')
-  
-  # tmp = features_df %>% left_join(map_symbol_id, by = 'gene_id') %>% dplyr::filter(is.na(chr.x) & !is.na(chr.y))
   
   cells = read.table(paste0(data_dir, '/rna/', prefix, "_barcodes.tsv.gz"))
   

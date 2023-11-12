@@ -43,7 +43,7 @@ for (prefix in prefixes) {
   features = read.table(paste0(data_dir, '/atac/', prefix, "_peaks.bed.gz")) %>% 
     mutate(peak_id = paste0(V1, ':', V2, '-', V3))
   cells = read.table(paste0(data_dir, '/atac/', prefix, "_barcodes.tsv.gz"))
-  # write.table(features, file = 'filtered_peak_bc_matrix/features.tsv.gz', quote = F, col.names = F, sep = '\t', row.names = F)
+  
   
   library(Matrix)
   counts = Matrix::readMM(paste0(data_dir, '/atac/', prefix, "_matrix.mtx.gz"))
@@ -51,13 +51,7 @@ for (prefix in prefixes) {
   
   
   colnames(counts) = cells$V1
-  # counts <- Seurat::Read10X(data.dir = 'filtered_peak_bc_matrix', gene.column = 4)
-  # metadata <- read.csv(
-  #   file = "singlecell.csv",
-  #   header = TRUE,
-  #   row.names = 1
-  # )
-  #  I first ran tabix --start 1 --end 2 --zero-based
+  
   chrom_assay <- CreateChromatinAssay(
     counts = counts,
     sep = c(":", "-"),
@@ -66,82 +60,56 @@ for (prefix in prefixes) {
     min.cells = 10,
     min.features = 200
   )
-  pbmc <- CreateSeuratObject(
+  so <- CreateSeuratObject(
     counts = chrom_assay,
     assay = "peaks"
-    # meta.data = metadata
   )
   
-  tmp = granges(pbmc)
+  tmp = granges(so)
   
   genome(annotations) <- "hg38"
   # add the gene information to the object
-  Annotation(pbmc) <- annotations
+  Annotation(so) <- annotations
   
   
   #QC
   # compute nucleosome signal score per cell
-  pbmc <- NucleosomeSignal(object = pbmc)
-  tmp = pbmc@meta.data$nucleosome_signal
+  so <- NucleosomeSignal(object = so)
+  tmp = so@meta.data$nucleosome_signal
   hist(tmp[tmp<5], breaks=100)
   
   # compute TSS enrichment score per cell
-  pbmc <- TSSEnrichment(object = pbmc, fast = FALSE)
-  
-  # # add blacklist ratio and fraction of reads in peaks
-  # pbmc$pct_reads_in_peaks <- pbmc$peak_region_fragments / pbmc$passed_filters * 100
-  # pbmc$blacklist_ratio <- pbmc$blacklist_region_fragments / pbmc$peak_region_fragments
-  
-  pbmc$high.tss <- ifelse(pbmc$TSS.enrichment > 2, 'High', 'Low')
-  #TSSPlot(pbmc, group.by = 'high.tss') + NoLegend()
+  so <- TSSEnrichment(object = so, fast = FALSE)
   
   
-  pbmc$nucleosome_group <- ifelse(pbmc$nucleosome_signal > 4, 'NS > 4', 'NS < 4')
-  #FragmentHistogram(object = pbmc, group.by = 'nucleosome_group')
+  so$high.tss <- ifelse(so$TSS.enrichment > 2, 'High', 'Low')
   
-  # VlnPlot(
-  #   object = pbmc,
-  #   features = c('nCount_peaks', 'peak_region_fragments',
-  #                'TSS.enrichment', 'blacklist_ratio', 'nucleosome_signal'),
-  #   pt.size = 0.1,
-  #   ncol = 5
-  # )
   
-  pbmc_sub <- subset(
-    x = pbmc,
+  so$nucleosome_group <- ifelse(so$nucleosome_signal > 4, 'NS > 4', 'NS < 4')
+  
+  
+  so_sub <- subset(
+    x = so,
     subset = nCount_peaks > filters_df[prefix, 'min_counts'] &
       nCount_peaks < filters_df[prefix, 'max_counts'] &
-      # pct_reads_in_peaks > 15 &
-      # blacklist_ratio < 0.05 &
       nucleosome_signal < 9 &
       TSS.enrichment > 2
   )
   
-  pbmc = pbmc_sub
-  # pbmc <- RunTFIDF(pbmc)
-  # pbmc <- FindTopFeatures(pbmc, min.cutoff = 'q0')
-  # pbmc <- RunSVD(pbmc)
+  so = so_sub
   
-  # #DepthCor(pbmc)
-  
-  # pbmc <- RunUMAP(object = pbmc, reduction = 'lsi', dims = 2:30)
-  # pbmc <- FindNeighbors(object = pbmc, reduction = 'lsi', dims = 2:30)
-  # pbmc <- FindClusters(object = pbmc, verbose = FALSE, algorithm = 3)
-  # DimPlot(object = pbmc, label = TRUE) + NoLegend()
   
   library(SummarizedExperiment)
   library(Matrix)
-  se=SummarizedExperiment(assays=list(counts=pbmc@assays$peaks@counts))
+  se=SummarizedExperiment(assays=list(counts=so@assays$peaks@counts))
   
-  featureDF = as.data.frame(pbmc@assays$peaks@ranges) %>% dplyr::rename(chr = seqnames, from = start, to = end)
+  featureDF = as.data.frame(so@assays$peaks@ranges) %>% dplyr::rename(chr = seqnames, from = start, to = end)
   
-  # save_dir = paste0(prefix, '/')
-  # if (!dir.exists(save_dir)){ dir.create(save_dir)}
   create_congas_tibble(sumExp=se, modality = 'ATAC', save_dir = 'atac/',
                        features = featureDF,
                        output_file = paste0(prefix, '_counts_final.tsv'))
   
-  saveRDS(pbmc, paste0('atac/',prefix, '_seurat_object.rds'))
+  saveRDS(so, paste0('atac/',prefix, '_seurat_object.rds'))
   
 }
 

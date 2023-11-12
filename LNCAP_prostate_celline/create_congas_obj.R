@@ -103,14 +103,6 @@ mito = all_genes %>% str_starts(pattern = 'MT-')
 all_genes = setdiff(all_genes, all_genes[mito])
 rna = rna %>% dplyr::filter(gene %in% all_genes)
 
-# Save rds files for later
-saveRDS(rna, paste0(out.dir, "0.rna.rds"))
-# saveRDS(norm_rna, paste0(out.dir, "0.norm_rna.rds"))
-saveRDS(atac, paste0(out.dir, "0.atac.rds"))
-# saveRDS(norm_atac, paste0(out.dir, "0.norm_atac.rds"))
-# saveRDS(segments, paste0(out.dir, "0.segments.rds"))
-saveRDS(rbind(metadata_rna, metadata_atac), paste0(out.dir, '0.celltypes.rds'))
-
 # Remove these chromosomes
 segments = segments %>% dplyr::filter(chr != 'chrX', chr != 'chrY')
 
@@ -180,28 +172,15 @@ ggsave(
   height = 16
 )
 
-# Rcongas raw
-saveRDS(x, paste0(out.dir, "1.rcongas_raw.rds"))
-x = readRDS(paste0(out.dir, "1.rcongas_raw.rds"))
-
-# Now plot the number of nonzero cells and the number of peaks per segment
-# ggplot(x$input$segmentation, aes(x=ATAC_nonzerocells, y=ATAC_peaks)) + geom_point()
-# ggplot(x$input$segmentation, aes(x=RNA_nonzerocells, y=RNA_genes)) + geom_point()
-
 sortedATAC = x$input$segmentation %>% arrange(ATAC_nonzerocells)
 sortedRNA = x$input$segmentation %>% arrange(RNA_nonzerocells)
-sortedATAC
-sortedRNA
+
 
 
 segments = x$input$segmentation 
 
-
-# segments = segments %>% filter(ATAC_nonzerocells>=4326 & RNA_nonzerocells >=3060)
-#ATAC_threshold =12000# 7000
-#RNA_threshold = 14000# 4000
-  segmentsRemoveN = segments %>% filter(RNA_genes < 100)#(RNA_nonzerocells < !!RNA_threshold) | (ATAC_nonzerocells < !!ATAC_threshold))
-segmentsKeep = segments %>% filter(RNA_genes >= 100)#(RNA_nonzerocells >= !!RNA_threshold) & (ATAC_nonzerocells >= !!ATAC_threshold))
+segmentsRemove = segments %>% filter(RNA_genes < 100)
+segmentsKeep = segments %>% filter(RNA_genes >= 100
 
 xdiscarded = Rcongas:::select_segments(x, segment_ids = segmentsRemove$segment_id)
 
@@ -216,34 +195,13 @@ ggsave(
   width = 18,
   height = 18
 )
-# x$input$metadata = metadata_atac
-xdiscarded$input$metadata = x$input$metadata %>% filter(cell %in% unique(xdiscarded$input$dataset$cell))
-# Modificato plot_data in mdodo da plottare gli istogrammi colorati per celltype
-ggsave(paste0(fig.dir, "1.1.Histogram_discarded_segments_amplified.png"),
-       plot_data_mod(xdiscarded, to_plot = 'type', position = 'stack'),
-       width = 19, height = 19)
-
-x = Rcongas:::select_segments(x, segment_ids = segmentsKeep$segment_id)
-
 
 # Filter post mapping segments data
 s_q = c(0.01, .99)
-x_noout = x %>% Rcongas:::filter_outliers(lower_quantile = s_q[1], upper_quantile = s_q[2], frequency_cutoff = 0)# , frequency_cutoff = 0)#, action = 'cap')
-x_back = x
-x = cap_outliers(x,lower_quantile = s_q[1] , upper_quantile = s_q[2])#  lower_quantile = s_q[1], upper_quantile = s_q[2])
-
-outliers = setdiff(x$input$normalisation$cell, x_noout$input$normalisation$cell)
-
-x$input$metadata = left_join(x$input$metadata, tibble(cell = x$input$normalisation$cell) %>% mutate(is_outlier = cell %in% !!outliers))
-
-ggsave(paste0(fig.dir, "2.1.Histogram_outliers.png"),
-       plot_data_mod(x, to_plot = 'is_outlier', position = 'stack'),
-       width = 19, height = 19)
-
-
+x = x %>% Rcongas:::filter_outliers(lower_quantile = s_q[1], upper_quantile = s_q[2], frequency_cutoff = 0)# , frequency_cutoff = 0)#, action = 'cap')
 
 ggsave(
-  paste0(fig.dir, "2.1.Histogram_longest_20_segments.png"),
+  paste0(fig.dir, "3.1.Histogram_longest_20_segments.png"),
   plot_data(
     x,
     what = 'histogram',
@@ -257,7 +215,7 @@ ggsave(
   height = 18
 )
 ggsave(
-  paste0(fig.dir, "2.1.Histogram_all_segments.png"),
+  paste0(fig.dir, "3.1.Histogram_all_segments.png"),
   plot_data(
     x,
     what = 'histogram',
@@ -268,75 +226,20 @@ ggsave(
   height = 18
 )
 
-ggsave(
-  paste0(fig.dir, "2.2.Cell_heatmap.png"),
-  plot_data(
-    x,
-    what = 'heatmap',
-    segments = get_input(x, what = 'segmentation') %>%
-      mutate(L = to - from) %>%
-      arrange(dplyr::desc(L)) %>%
-      #top_n(20) %>%
-      pull(segment_id)
-  ),
-  width = 12,
-  height = 9
-)
+resistance = data.frame(type = unique(x$input$metadata$type), resistance = c('sensitive', 'sensitive', 'resistant', 'resistant'))
 
-ggsave(
-  paste0(fig.dir, "2.3.Events_mapping.png"),
-  plot_data(x, what = 'mapping'),
-  width = 4,
-  height = 16
-)
-
-ggsave(paste0(fig.dir, "2.1.Histogram_type.png"),
-       plot_data_mod(x, to_plot = 'type', position = 'stack'),
-       width = 19, height = 19)
-saveRDS(x, paste0(out.dir, "2.rcongas_filtered.rds"))
-
-
-#########################
-ggsave(
-  paste0(fig.dir, "3.1.Histogram_longest_20_segments_0out.png"),
-  plot_data(
-    x_noout,
-    what = 'histogram',
-    segments = get_input(x_noout, what = 'segmentation') %>%
-      mutate(L = to - from) %>%
-      dplyr::arrange(dplyr::desc(L)) %>%
-      top_n(20) %>%
-      pull(segment_id)
-  ),
-  width = 18,
-  height = 18
-)
-ggsave(
-  paste0(fig.dir, "3.1.Histogram_all_segments_0out.png"),
-  plot_data(
-    x_noout,
-    what = 'histogram',
-    segments = get_input(x_noout, what = 'segmentation') %>%
-      pull(segment_id)
-  ),
-  width = 18,
-  height = 18
-)
-
-resistance = data.frame(type = unique(x_noout$input$metadata$type), resistance = c('sensitive', 'sensitive', 'resistant', 'resistant'))
-
-x_noout$input$metadata = x$input$metadata %>% filter(cell %in% unique(x_noout$input$dataset$cell)) %>%
+x$input$metadata = x$input$metadata %>% filter(cell %in% unique(x$input$dataset$cell)) %>%
   left_join(resistance)
 
 
 # Modificato plot_data in mdodo da plottare gli istogrammi colorati per celltype
 ggsave(paste0(fig.dir, "3.1.Histogram_type_0out.png"),
-       plot_data_mod(x_noout, to_plot = 'type', position = 'stack'),
+       plot_data_mod(x, to_plot = 'type', position = 'stack'),
        width = 19, height = 19)
 
 ggsave(paste0(fig.dir, "3.1.Histogram_resistance.png"),
-       plot_data_mod(x_noout, to_plot = 'resistance', position = 'stack'),
+       plot_data_mod(x, to_plot = 'resistance', position = 'stack'),
        width = 19, height = 19)
 
-saveRDS(x_noout, paste0(out.dir, "5.rcongas_noOutliers.rds"))
+saveRDS(x, paste0(out.dir, "5.rcongas_noOutliers.rds"))
 
