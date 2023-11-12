@@ -1,25 +1,12 @@
 machine = 'mac'
 
-if (machine == 'guascone') {
-  dyn.load('/mnt/storage/dati_lucreziap/conda_envs/cn_atac/lib/libiconv.so.2')
-  library(reticulate)
-  reticulate::use_condaenv('/mnt/storage/dati_lucreziap/conda_envs/r-reticulate')
-  script_folder = '/mnt/storage/dati_lucreziap/congasp_analysis/'
-  data_folder = '/mnt/storage/dati_lucreziap/CONGASp_data/'
-} else if (machine == 'giacinto') {
-  library(reticulate)
-  reticulate::use_condaenv('/dati-raid/BimiB/share/conda_envs/congasp_reticulate/')
-  script_folder = '/dati-raid/BimiB/lpatruno/ATAC/congasp_analysis'
-  data_folder = '/dati-raid/BimiB/lpatruno/ATAC/CONGASp_data/'
-} else if (machine == 'docker') {
-  library(reticulate)
-  reticulate::use_condaenv('/home/root/anaconda3')
-  script_folder = '/app/congasp_analysis/'
-  data_folder = '/app/'
-} else if (machine == 'mac') {
-  script_folder = '/Users/lucrezia/Library/CloudStorage/OneDrive-UniversityCollegeLondon/dottorato/congasp_analysis/'
-  data_folder = '/Users/lucrezia/Dropbox/CONGASp_data/'
-}
+
+script_folder = './'
+data_folder = 'data/'
+
+source(paste0(script_folder, "/utils/congas_plot_mod.R"))
+source(paste0(script_folder, "/utils/outliers_new_function.R"))
+source(paste0(script_folder,'/utils/create_tibble.R'))
 
 library(stringr)
 library(Signac)
@@ -32,11 +19,8 @@ set.seed(1234)
 library(dplyr)
 
 
-source(paste0(script_folder, "/congas_plot_mod.R"))
-source(paste0(script_folder, "/outliers_new_function.R"))
-source(paste0(script_folder,'/analyse_data/create_tibble.R'))
 
-setwd(paste0(data_folder, "/Reviews/SNU601/"))
+setwd(paste0(data_folder, "/SNU601/"))
 
 
 data_dir = './'
@@ -47,43 +31,40 @@ prefixes = gsub(pattern = '_barcodes.tsv.gz', replacement = '',
 
 prefix = prefixes[1] 
 
-# Take feature file from 10x multiome, where each gene id is already mapped to its genomic position
 map_symbol_id = readr::read_delim(paste0(data_folder, '/10x_multiome/lymphoma/filtered_feature_bc_matrix/features.tsv.gz'), 
                                   delim  = '\t',
                                   col_names = c('gene_id', 'symbol', 'modality', 'chr', 'from', 'to'))  %>% dplyr::filter(modality == 'Gene Expression')
 
 
-# prefix = prefixes[4]
-# for (prefix in prefixes){ 
-  features_df = read.table(paste0(data_dir, '/rna/', prefix, "_genes.tsv.gz"))  
-  colnames(features_df) = c('symbol')
-  
-  cells = read.table(paste0(data_dir, '/rna/', prefix, "_barcodes.tsv.gz"))
-  
-  library(Matrix)
-  
-  counts = Matrix::readMM(paste0(data_dir, '/rna/', prefix, "_matrix.mtx.gz"))
-  
-  rownames(counts) = features_df$symbol
-  colnames(counts) = cells$V1
+features_df = read.table(paste0(data_dir, '/rna/', prefix, "_genes.tsv.gz"))  
+colnames(features_df) = c('symbol')
 
-  so = Seurat::CreateSeuratObject(counts = counts)
-  
-  features_df = features_df %>%# dplyr::select(gene_id, gene_name) %>% 
-    left_join(map_symbol_id)
-  duplicated_genes = features_df$symbol[duplicated(features_df$symbol)] 
-  
-  counts = counts[!rownames(counts) %in% duplicated_genes,] 
-  
-  features_df = features_df %>% filter(!symbol %in% duplicated_genes) %>% rename(gene=symbol)
-  
-  counts = counts[features_df$gene,] 
-  
-  save_dir = 'rna/'
-  if (!dir.exists(save_dir)){ dir.create(save_dir)}
-  Rcongas:::create_congas_tibble(counts=counts, modality = 'RNA', save_dir = save_dir,
-                     features = features_df,
-                     output_file = paste0('counts_final_nuovo.tsv'))
+cells = read.table(paste0(data_dir, '/rna/', prefix, "_barcodes.tsv.gz"))
+
+library(Matrix)
+
+counts = Matrix::readMM(paste0(data_dir, '/rna/', prefix, "_matrix.mtx.gz"))
+
+rownames(counts) = features_df$symbol
+colnames(counts) = cells$V1
+
+so = Seurat::CreateSeuratObject(counts = counts)
+
+features_df = features_df %>%# dplyr::select(gene_id, gene_name) %>% 
+  left_join(map_symbol_id)
+duplicated_genes = features_df$symbol[duplicated(features_df$symbol)] 
+
+counts = counts[!rownames(counts) %in% duplicated_genes,] 
+
+features_df = features_df %>% filter(!symbol %in% duplicated_genes) %>% rename(gene=symbol)
+
+counts = counts[features_df$gene,] 
+
+save_dir = 'rna/'
+if (!dir.exists(save_dir)){ dir.create(save_dir)}
+Rcongas:::create_congas_tibble(counts=counts, modality = 'RNA', save_dir = save_dir,
+                    features = features_df,
+                    output_file = paste0('counts_final_nuovo.tsv'))
 
 ##### Seurat object
 so <- NormalizeData(so, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -93,8 +74,7 @@ so <- ScaleData(so, features = all.genes)
 so <- RunPCA(so, features = all.genes)
 so <- FindNeighbors(so, dims = 1:10)
 so <- FindClusters(so, resolution = 0.5)
-# If you haven't installed UMAP, you can do so via reticulate::py_install(packages =
-# 'umap-learn')
+
 so <- RunUMAP(so, dims = 1:10)
 
 saveRDS(so, 'rna/seurat_object.rds')
